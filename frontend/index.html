@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Yana OS — Admin MVP</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="./config.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F6F9;color:#1a1a2e}
+  input,select,textarea,button{font-family:inherit}
+  .btn{padding:8px 16px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:13px;transition:all .15s}
+  .btn:hover{background:#f0f0f0}
+  .btn-primary{background:#1B4F72;color:#fff;border-color:#1B4F72}
+  .btn-primary:hover{background:#154360}
+  .btn-success{background:#1E8449;color:#fff;border-color:#1E8449}
+  .btn-danger{background:#C0392B;color:#fff;border-color:#C0392B}
+  .btn-sm{padding:5px 10px;font-size:12px}
+  input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{
+    width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;outline:none;background:#fff
+  }
+  input:focus,select:focus,textarea:focus{border-color:#1B4F72;box-shadow:0 0 0 2px rgba(27,79,114,.15)}
+  label{display:block;font-size:12px;color:#555;margin-bottom:4px;font-weight:500}
+  .card{background:#fff;border-radius:12px;border:1px solid #E8EAF0;overflow:hidden}
+  .pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill-applied{background:#D6EAF8;color:#1A5276}
+  .pill-docs_submitted{background:#EBF5FB;color:#1A5276}
+  .pill-kyc_pending{background:#FDEBD0;color:#784212}
+  .pill-kyc_verified{background:#D5F5E3;color:#1E8449}
+  .pill-active{background:#D5F5E3;color:#145A32}
+  .pill-rejected{background:#FADBD8;color:#922B21}
+  .pill-suspended{background:#F2F3F4;color:#626567}
+  .pill-available{background:#D5F5E3;color:#1E8449}
+  .pill-allocated{background:#D6EAF8;color:#1A5276}
+  .pill-maintenance{background:#FADBD8;color:#922B21}
+  .pill-returned{background:#F2F3F4;color:#626567}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{padding:8px 16px;text-align:left;color:#888;font-weight:400;font-size:11px;border-bottom:1px solid #E8EAF0;background:#FAFAFA}
+  td{padding:10px 16px;border-bottom:1px solid #F4F6F9;vertical-align:middle}
+  tr:hover td{background:#FAFBFC}
+  .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;color:#fff;font-size:13px;font-weight:500;z-index:9999;animation:slideIn .3s ease}
+  .toast-success{background:#1E8449}
+  .toast-error{background:#C0392B}
+  @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center}
+  .modal{background:#fff;border-radius:16px;padding:28px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto}
+  .modal h3{font-size:17px;font-weight:600;margin-bottom:20px}
+  .form-row{margin-bottom:14px}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat-card{background:#fff;border-radius:12px;border:1px solid #E8EAF0;padding:18px 22px}
+  .stat-label{font-size:12px;color:#888;margin-bottom:6px}
+  .stat-value{font-size:28px;font-weight:700}
+  .sidebar{width:210px;background:#1B4F72;color:#fff;flex-shrink:0;display:flex;flex-direction:column}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;color:rgba(255,255,255,.75);cursor:pointer;transition:background .15s;border-radius:0}
+  .nav-item:hover{background:rgba(255,255,255,.1)}
+  .nav-item.active{background:rgba(255,255,255,.18);color:#fff;border-left:3px solid #fff;padding-left:17px}
+  .battery-bar{width:60px;height:6px;background:#eee;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:4px}
+  .empty{text-align:center;padding:40px;color:#aaa;font-size:14px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+const API = (window.YANA_CONFIG && window.YANA_CONFIG.apiBaseUrl) || "http://127.0.0.1:8000/api";
+
+// ── API helper ────────────────────────────────────────────────────────────────
+function api(path, opts = {}) {
+  const token = localStorage.getItem("access");
+  return fetch(API + path, {
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...opts.headers },
+    ...opts,
+  }).then(async r => {
+    if (r.status === 401) { localStorage.clear(); window.location.reload(); }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || data.detail || JSON.stringify(data));
+    return data;
+  });
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function Toast({ msg, type, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, []);
+  return <div className={`toast toast-${type}`}>{msg}</div>;
+}
+
+// ── Pill ──────────────────────────────────────────────────────────────────────
+function Pill({ status }) {
+  return <span className={`pill pill-${status}`}>{status.replace(/_/g, " ").toUpperCase()}</span>;
+}
+
+// ── Battery bar ───────────────────────────────────────────────────────────────
+function Battery({ pct }) {
+  const color = pct > 70 ? "#1E8449" : pct > 40 ? "#D68910" : "#C0392B";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+      <span style={{ color, fontWeight: 600 }}>{pct}%</span>
+      <span className="battery-bar"><span style={{ display: "block", width: pct + "%", height: "100%", background: color, borderRadius: 3 }}/></span>
+    </span>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOGIN PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+function LoginPage({ onLogin }) {
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp]     = useState("");
+  const [step, setStep]   = useState("phone");
+  const [otpHint, setOtpHint] = useState("");
+  const [err, setErr]     = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function sendOTP() {
+    if (phone.length < 10) { setErr("Enter a valid phone number"); return; }
+    setLoading(true); setErr("");
+    try {
+      const res = await api("/auth/otp/request/", { method: "POST", body: JSON.stringify({ phone_number: phone }) });
+      setOtpHint(res.otp || ""); // MVP: OTP returned in response
+      setStep("otp");
+    } catch (e) { setErr(e.message); }
+    setLoading(false);
+  }
+
+  async function verifyOTP() {
+    setLoading(true); setErr("");
+    try {
+      const res = await api("/auth/otp/verify/", { method: "POST", body: JSON.stringify({ phone_number: phone, otp }) });
+      localStorage.setItem("access",  res.access);
+      localStorage.setItem("refresh", res.refresh);
+      localStorage.setItem("user",    JSON.stringify(res.user));
+      onLogin(res.user);
+    } catch (e) { setErr(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#1B4F72" }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 40, width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#1B4F72" }}>Yana OS</div>
+          <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>MVP Admin — Onboarding &amp; Fleet</div>
+        </div>
+        {step === "phone" ? (
+          <>
+            <div className="form-row">
+              <label>Mobile Number</label>
+              <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+919876543210" onKeyDown={e => e.key === "Enter" && sendOTP()}/>
+            </div>
+            <button className="btn btn-primary" style={{ width: "100%", padding: 11 }} onClick={sendOTP} disabled={loading}>
+              {loading ? "Sending..." : "Send OTP"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="form-row">
+              <label>OTP sent to {phone}</label>
+              <input value={otp} onChange={e => setOtp(e.target.value)} placeholder="6-digit OTP" maxLength={6} autoFocus onKeyDown={e => e.key === "Enter" && verifyOTP()}/>
+              {otpHint && <div style={{ marginTop: 6, fontSize: 12, color: "#27AE60", fontWeight: 600 }}>Dev mode — OTP: {otpHint}</div>}
+            </div>
+            <button className="btn btn-primary" style={{ width: "100%", padding: 11 }} onClick={verifyOTP} disabled={loading}>
+              {loading ? "Verifying..." : "Verify &amp; Login"}
+            </button>
+            <div style={{ textAlign: "center", marginTop: 10 }}>
+              <span style={{ fontSize: 12, color: "#888", cursor: "pointer" }} onClick={() => setStep("phone")}>← Change number</span>
+            </div>
+          </>
+        )}
+        {err && <div style={{ marginTop: 12, padding: "10px 14px", background: "#FADBD8", color: "#922B21", borderRadius: 8, fontSize: 13 }}>{err}</div>}
+        <div style={{ marginTop: 20, fontSize: 12, color: "#aaa", textAlign: "center" }}>
+          Demo: +919999999999 | +919876543210 | +918765432109
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+function Dashboard() {
+  const [rStats, setRStats] = useState({ total: 0, by_status: [] });
+  const [vStats, setVStats] = useState([]);
+
+  useEffect(() => {
+    api("/onboarding/riders/stats/").then(setRStats).catch(() => {});
+    api("/fleet/vehicles/stats/").then(setVStats).catch(() => {});
+  }, []);
+
+  const vs = (key) => vStats.find(x => x.status === key)?.count || 0;
+  const rs = (key) => rStats.by_status?.find(x => x.onboarding_status === key)?.count || 0;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Dashboard</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+        <div className="stat-card"><div className="stat-label">Total Riders</div><div className="stat-value">{rStats.total}</div></div>
+        <div className="stat-card"><div className="stat-label">Active Riders</div><div className="stat-value" style={{ color: "#1E8449" }}>{rs("active")}</div></div>
+        <div className="stat-card"><div className="stat-label">KYC Pending</div><div className="stat-value" style={{ color: "#D68910" }}>{rs("kyc_pending") + rs("docs_submitted")}</div></div>
+        <div className="stat-card"><div className="stat-label">Applied</div><div className="stat-value" style={{ color: "#1A5276" }}>{rs("applied")}</div></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+        <div className="stat-card"><div className="stat-label">Total Vehicles</div><div className="stat-value">{vStats.reduce((s, x) => s + x.count, 0)}</div></div>
+        <div className="stat-card"><div className="stat-label">Available</div><div className="stat-value" style={{ color: "#1E8449" }}>{vs("available")}</div></div>
+        <div className="stat-card"><div className="stat-label">Allocated</div><div className="stat-value" style={{ color: "#1A5276" }}>{vs("allocated")}</div></div>
+        <div className="stat-card"><div className="stat-label">Maintenance</div><div className="stat-value" style={{ color: "#C0392B" }}>{vs("maintenance")}</div></div>
+      </div>
+      <div className="card">
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #E8EAF0", fontWeight: 600, fontSize: 14 }}>Rider Onboarding Pipeline</div>
+        <div style={{ padding: "16px 18px" }}>
+          {[["applied","Applied","#1A5276"],["docs_submitted","Docs Submitted","#1A5276"],["kyc_pending","KYC Pending","#D68910"],["kyc_verified","KYC Verified","#1E8449"],["active","Active","#145A32"]].map(([k, label, color]) => {
+            const count = rs(k);
+            const pct   = rStats.total > 0 ? Math.round((count / rStats.total) * 100) : 0;
+            return (
+              <div key={k} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
+                  <span style={{ color: "#555" }}>{label}</span>
+                  <span style={{ fontWeight: 600 }}>{count}</span>
+                </div>
+                <div style={{ height: 8, background: "#F0F2F5", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4, transition: "width .5s" }}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RIDERS (ONBOARDING)
+// ═══════════════════════════════════════════════════════════════════════════════
+function Riders({ toast }) {
+  const [riders, setRiders]     = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch]     = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [activeTab, setActiveTab] = useState("profile");
+  const [events, setEvents]     = useState([]);
+  const [showAddRider, setShowAddRider] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api("/onboarding/riders/").then(d => {
+      const list = d.results || d;
+      setRiders(list);
+      if (list.length && !selected) setSelected(list[0]);
+    }).catch(e => toast(e.message, "error"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (selected && activeTab === "events") {
+      api(`/onboarding/riders/${selected.id}/events/`).then(setEvents).catch(() => {});
+    }
+  }, [selected, activeTab]);
+
+  const filtered = riders.filter(r => {
+    const matchS = !search || (r.full_name || "").toLowerCase().includes(search.toLowerCase()) || (r.phone_number || "").includes(search);
+    const matchF = !filterStatus || r.onboarding_status === filterStatus;
+    return matchS && matchF;
+  });
+
+  async function doVerify(action) {
+    const reason = action === "reject" ? window.prompt("Rejection reason (optional):") || "" : "";
+    try {
+      await api(`/onboarding/riders/${selected.id}/verify/`, {
+        method: "POST", body: JSON.stringify({ action, rejection_reason: reason }),
+      });
+      toast(`Rider ${action === "approve" ? "approved" : "rejected"}`, "success");
+      load();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  async function doActivate() {
+    try {
+      await api(`/onboarding/riders/${selected.id}/activate/`, { method: "POST" });
+      toast("Rider activated!", "success");
+      load();
+    } catch (e) { toast(e.message, "error"); }
+  }
+
+  const sel = selected ? riders.find(r => r.id === selected.id) || selected : null;
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Rider Onboarding</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddRider(true)}>+ Add Rider</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {/* LEFT — list */}
+        <div className="card">
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid #E8EAF0", display: "flex", gap: 8 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or phone..." style={{ flex: 1 }}/>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ width: 130 }}>
+              <option value="">All status</option>
+              {["applied","docs_submitted","kyc_pending","kyc_verified","active","rejected"].map(s =>
+                <option key={s} value={s}>{s.replace(/_/g," ")}</option>
+              )}
+            </select>
+          </div>
+          {loading && <div className="empty">Loading...</div>}
+          {!loading && filtered.length === 0 && <div className="empty">No riders found</div>}
+          <table>
+            <thead><tr><th>Rider</th><th>Status</th><th>Hub</th></tr></thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.id} onClick={() => { setSelected(r); setActiveTab("profile"); }}
+                    style={{ cursor: "pointer", background: sel?.id === r.id ? "#EBF5FB" : "transparent" }}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{r.full_name}</div>
+                    <div style={{ fontSize: 11, color: "#aaa" }}>{r.phone_number}</div>
+                  </td>
+                  <td><Pill status={r.onboarding_status}/></td>
+                  <td style={{ fontSize: 12, color: "#666" }}>{r.hub_name || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* RIGHT — detail */}
+        <div className="card">
+          {!sel ? <div className="empty">Select a rider</div> : (
+            <>
+              <div style={{ display: "flex", borderBottom: "1px solid #E8EAF0" }}>
+                {["profile","documents","events"].map(tab => (
+                  <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                    padding: "10px 16px", border: "none", background: "none", cursor: "pointer",
+                    fontSize: 13, fontWeight: activeTab === tab ? 600 : 400,
+                    color: activeTab === tab ? "#1B4F72" : "#888",
+                    borderBottom: activeTab === tab ? "2px solid #1B4F72" : "2px solid transparent",
+                  }}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+                ))}
+              </div>
+              <div style={{ padding: 18 }}>
+                {activeTab === "profile" && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                      <div>
+                        <div style={{ fontSize: 17, fontWeight: 700 }}>{sel.full_name}</div>
+                        <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>{sel.phone_number}</div>
+                      </div>
+                      <Pill status={sel.onboarding_status}/>
+                    </div>
+                    {[["Hub", sel.hub_name || "—"], ["Aadhaar", sel.aadhaar_number || "—"], ["DL Number", sel.dl_number || "—"],
+                      ["Bank A/C", sel.bank_account || "—"], ["IFSC", sel.ifsc_code || "—"], ["Bank", sel.bank_name || "—"],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", marginBottom: 8, fontSize: 13 }}>
+                        <span style={{ width: 110, color: "#888", flexShrink: 0 }}>{k}</span>
+                        <span style={{ fontWeight: v !== "—" ? 500 : 400 }}>{v}</span>
+                      </div>
+                    ))}
+                    {sel.rejection_reason && (
+                      <div style={{ marginTop: 10, padding: "8px 12px", background: "#FADBD8", borderRadius: 8, fontSize: 12, color: "#922B21" }}>
+                        Rejection reason: {sel.rejection_reason}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                      {["docs_submitted","kyc_pending"].includes(sel.onboarding_status) && (
+                        <>
+                          <button className="btn btn-success btn-sm" style={{ flex: 1 }} onClick={() => doVerify("approve")}>✓ Approve KYC</button>
+                          <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={() => doVerify("reject")}>✗ Reject</button>
+                        </>
+                      )}
+                      {sel.onboarding_status === "kyc_verified" && (
+                        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={doActivate}>Activate Rider</button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {activeTab === "documents" && (
+                  <div>
+                    {(!sel.documents || sel.documents.length === 0)
+                      ? <div className="empty">No documents uploaded</div>
+                      : sel.documents.map(doc => (
+                        <div key={doc.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #F4F6F9" }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{doc.doc_type.replace(/_/g," ").toUpperCase()}</div>
+                            <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{new Date(doc.uploaded_at).toLocaleString()}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Pill status={doc.verification_status}/>
+                            {doc.file_url && <a href={doc.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2E86C1" }}>View</a>}
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+                {activeTab === "events" && (
+                  <div>
+                    {events.length === 0
+                      ? <div className="empty">No events yet</div>
+                      : events.map(e => (
+                        <div key={e.id} style={{ display: "flex", gap: 10, marginBottom: 12, fontSize: 13 }}>
+                          <div style={{ fontSize: 11, color: "#aaa", whiteSpace: "nowrap", marginTop: 2, width: 130 }}>
+                            {new Date(e.created_at).toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })}
+                          </div>
+                          <div>
+                            <span style={{ fontWeight: 600 }}>{e.event_type.replace(/_/g," ")}</span>
+                            {e.from_status && <span style={{ color: "#888" }}> · {e.from_status} → {e.to_status}</span>}
+                            {e.notes && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{e.notes}</div>}
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      {showAddRider && <AddRiderModal onClose={() => setShowAddRider(false)} onSaved={() => { setShowAddRider(false); load(); }} toast={toast}/>}
+    </div>
+  );
+}
+
+function AddRiderModal({ onClose, onSaved, toast }) {
+  const [phone, setPhone]   = useState("");
+  const [name, setName]     = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function save() {
+    if (!phone) { toast("Phone number required", "error"); return; }
+    setLoading(true);
+    try {
+      // First create a user via OTP flow (request OTP, then use it)
+      const r1 = await api("/auth/otp/request/", { method: "POST", body: JSON.stringify({ phone_number: phone }) });
+      const r2 = await api("/auth/otp/verify/", { method: "POST", body: JSON.stringify({ phone_number: phone, otp: r1.otp }) });
+      // Update name
+      if (name) {
+        await fetch(API + "/auth/me/update/", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${r2.access}` },
+          body: JSON.stringify({ full_name: name }),
+        });
+      }
+      // Create rider profile using the new user's token
+      await fetch(API + "/onboarding/riders/my_profile/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${r2.access}` },
+        body: JSON.stringify({}),
+      });
+      toast("Rider created!", "success");
+      onSaved();
+    } catch (e) { toast(e.message, "error"); setLoading(false); }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Add New Rider</h3>
+        <div className="form-row"><label>Phone Number</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91xxxxxxxxxx"/></div>
+        <div className="form-row"><label>Full Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Rider full name"/></div>
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button className="btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={loading}>{loading ? "Creating..." : "Create Rider"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VEHICLE ALLOCATION
+// ═══════════════════════════════════════════════════════════════════════════════
+function Allocation({ toast }) {
+  const [vehicles, setVehicles]   = useState([]);
+  const [riders, setRiders]       = useState([]);
+  const [allocations, setAllocs]  = useState([]);
+  const [selVehicle, setSelVehicle] = useState(null);
+  const [showForm, setShowForm]   = useState(false);
+  const [tab, setTab]             = useState("available");
+
+  const load = useCallback(() => {
+    api("/fleet/vehicles/available/").then(d => { const l = d.results||d; setVehicles(l); if(l.length&&!selVehicle) setSelVehicle(l[0]); }).catch(()=>{});
+    api("/onboarding/riders/?onboarding_status=active").then(d => setRiders(d.results||d)).catch(()=>{});
+    api("/fleet/allocations/?status=active").then(d => setAllocs(d.results||d)).catch(()=>{});
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function returnVehicle(allocId) {
+    if (!window.confirm("Confirm vehicle return?")) return;
+    try {
+      await api(`/fleet/allocations/${allocId}/return_vehicle/`, { method: "POST" });
+      toast("Vehicle returned", "success");
+      load();
+    } catch(e) { toast(e.message, "error"); }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Vehicle Allocation</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)} disabled={vehicles.length === 0 || riders.length === 0}>
+          + Allocate Vehicle
+        </button>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 2, background: "#E8EAF0", borderRadius: 8, padding: 3, marginBottom: 16, width: "fit-content" }}>
+        {[["available","Available Vehicles"],["active","Active Allocations"]].map(([k,label]) => (
+          <button key={k} onClick={() => setTab(k)} style={{
+            padding: "6px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 13,
+            background: tab === k ? "#fff" : "transparent",
+            fontWeight: tab === k ? 600 : 400,
+            color: tab === k ? "#1a1a2e" : "#888",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "available" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="card">
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #E8EAF0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>Available Vehicles</span>
+              <span style={{ fontSize: 11, background: "#D5F5E3", color: "#1E8449", padding: "2px 8px", borderRadius: 10 }}>{vehicles.length} ready</span>
+            </div>
+            {vehicles.length === 0 ? <div className="empty">No available vehicles</div> : (
+              <div>
+                {vehicles.map(v => (
+                  <div key={v.id} onClick={() => setSelVehicle(v)} style={{
+                    padding: "12px 16px", borderBottom: "1px solid #F4F6F9", cursor: "pointer",
+                    background: selVehicle?.id === v.id ? "#EBF5FB" : "transparent",
+                    display: "flex", alignItems: "center", gap: 12,
+                  }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "#D6EAF8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🛵</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{v.registration_number}</div>
+                      <div style={{ fontSize: 12, color: "#888" }}>{v.model} · {v.hub_name}</div>
+                      <Battery pct={v.battery_health_pct}/>
+                    </div>
+                    {selVehicle?.id === v.id && <span style={{ color: "#1B4F72", fontWeight: 700 }}>✓</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {selVehicle && (
+            <div className="card">
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #E8EAF0", fontWeight: 600, fontSize: 14 }}>Vehicle Details</div>
+              <div style={{ padding: 18 }}>
+                <div style={{ fontSize: 24, marginBottom: 8, textAlign: "center" }}>🛵</div>
+                {[["Reg No", selVehicle.registration_number], ["Model", selVehicle.model],
+                  ["Type", selVehicle.vehicle_type], ["Hub", selVehicle.hub_name],
+                  ["Battery", selVehicle.battery_health_pct + "%"], ["Odometer", selVehicle.odometer_km + " km"],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", marginBottom: 8, fontSize: 13 }}>
+                    <span style={{ width: 90, color: "#888", flexShrink: 0 }}>{k}</span>
+                    <span style={{ fontWeight: 500 }}>{v}</span>
+                  </div>
+                ))}
+                <button className="btn btn-primary" style={{ width: "100%", marginTop: 16 }}
+                  onClick={() => setShowForm(true)} disabled={riders.length === 0}>
+                  {riders.length === 0 ? "No active riders available" : "Allocate to Rider →"}
+                </button>
+                {riders.length === 0 && <div style={{ fontSize: 12, color: "#888", marginTop: 6, textAlign: "center" }}>Activate a rider first</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "active" && (
+        <div className="card">
+          {allocations.length === 0 ? <div className="empty">No active allocations</div> : (
+            <table>
+              <thead><tr><th>Vehicle</th><th>Rider</th><th>Plan</th><th>Since</th><th>Rent/day</th><th>Action</th></tr></thead>
+              <tbody>
+                {allocations.map(a => (
+                  <tr key={a.id}>
+                    <td><div style={{ fontWeight: 600 }}>{a.vehicle_reg}</div><div style={{ fontSize: 11, color: "#aaa" }}>{a.vehicle_model}</div></td>
+                    <td><div style={{ fontWeight: 600 }}>{a.rider_name}</div><div style={{ fontSize: 11, color: "#aaa" }}>{a.rider_phone}</div></td>
+                    <td><span style={{ fontSize: 12 }}>{a.plan_type}</span></td>
+                    <td style={{ fontSize: 12, color: "#666" }}>{new Date(a.created_at).toLocaleDateString("en-IN")}</td>
+                    <td style={{ fontWeight: 600 }}>₹{a.daily_rent}</td>
+                    <td><button className="btn btn-danger btn-sm" onClick={() => returnVehicle(a.id)}>Return</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {showForm && <AllocateModal vehicles={vehicles} riders={riders} defaultVehicle={selVehicle}
+        toast={toast} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }}/>}
+    </div>
+  );
+}
+
+function AllocateModal({ vehicles, riders, defaultVehicle, toast, onClose, onSaved }) {
+  const [vehicleId, setVehicleId] = useState(defaultVehicle?.id || (vehicles[0]?.id || ""));
+  const [riderId,   setRiderId]   = useState(riders[0]?.id || "");
+  const [plan,      setPlan]      = useState("daily");
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [endDate,   setEndDate]   = useState("");
+  const [rent,      setRent]      = useState(120);
+  const [notes,     setNotes]     = useState("");
+  const [loading,   setLoading]   = useState(false);
+
+  const days = endDate ? Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000)) : (plan === "daily" ? 1 : plan === "weekly" ? 7 : 30);
+
+  async function submit() {
+    if (!vehicleId || !riderId) { toast("Select vehicle and rider", "error"); return; }
+    setLoading(true);
+    try {
+      await api("/fleet/allocations/allocate/", {
+        method: "POST",
+        body: JSON.stringify({ vehicle_id: vehicleId, rider_id: riderId, plan_type: plan, start_date: startDate, end_date: endDate || null, daily_rent: rent, notes }),
+      });
+      toast("Vehicle allocated successfully!", "success");
+      onSaved();
+    } catch(e) { toast(e.message, "error"); setLoading(false); }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Allocate Vehicle to Rider</h3>
+        <div className="form-row">
+          <label>Vehicle</label>
+          <select value={vehicleId} onChange={e => setVehicleId(e.target.value)}>
+            {vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} — {v.model} ({v.hub_name})</option>)}
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Rider (Active only)</label>
+          <select value={riderId} onChange={e => setRiderId(e.target.value)}>
+            {riders.map(r => <option key={r.id} value={r.id}>{r.full_name} — {r.phone_number}</option>)}
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Rental Plan</label>
+          <select value={plan} onChange={e => setPlan(e.target.value)}>
+            <option value="daily">Daily Rental</option>
+            <option value="weekly">Weekly Rental</option>
+            <option value="monthly">Monthly Rental</option>
+          </select>
+        </div>
+        <div className="form-grid">
+          <div className="form-row"><label>Start Date</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}/></div>
+          <div className="form-row"><label>End Date (optional)</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}/></div>
+        </div>
+        <div className="form-row"><label>Daily Rent (₹)</label><input type="number" value={rent} onChange={e => setRent(Number(e.target.value))}/></div>
+        <div className="form-row"><label>Notes (optional)</label><textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ resize: "none" }}/></div>
+        <div style={{ background: "#F4F6F9", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ color: "#666" }}>Daily rent</span><span>₹{rent}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ color: "#666" }}>Duration</span><span>{days} day{days > 1 ? "s" : ""}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, borderTop: "1px solid #ddd", paddingTop: 6, marginTop: 4 }}>
+            <span>Total commitment</span><span>₹{rent * days}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading}>{loading ? "Allocating..." : "Confirm Allocation"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLEET MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+function Fleet({ toast }) {
+  const [vehicles, setVehicles] = useState([]);
+  const [hubs, setHubs]         = useState([]);
+  const [filterHub, setFilterHub]   = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [showAdd, setShowAdd]   = useState(false);
+
+  const load = useCallback(() => {
+    api("/fleet/vehicles/").then(d => setVehicles(d.results||d)).catch(()=>{});
+    api("/fleet/hubs/").then(d => setHubs(d.results||d)).catch(()=>{});
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = vehicles.filter(v =>
+    (!filterHub    || v.hub === filterHub) &&
+    (!filterStatus || v.status === filterStatus)
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Fleet Management</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add Vehicle</button>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+        <select value={filterHub} onChange={e => setFilterHub(e.target.value)} style={{ width: 180 }}>
+          <option value="">All Hubs</option>
+          {hubs.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+        </select>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ width: 160 }}>
+          <option value="">All Status</option>
+          {["available","allocated","maintenance","retired"].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <span style={{ fontSize: 13, color: "#888", alignSelf: "center" }}>{filtered.length} vehicles</span>
+      </div>
+      <div className="card">
+        <table>
+          <thead><tr><th>Vehicle</th><th>Hub</th><th>Battery</th><th>Odometer</th><th>Status</th></tr></thead>
+          <tbody>
+            {filtered.length === 0
+              ? <tr><td colSpan={5}><div className="empty">No vehicles</div></td></tr>
+              : filtered.map(v => (
+                <tr key={v.id}>
+                  <td><div style={{ fontWeight: 600 }}>🛵 {v.registration_number}</div><div style={{ fontSize: 11, color: "#aaa" }}>{v.model}</div></td>
+                  <td style={{ fontSize: 12, color: "#666" }}>{v.hub_name}<br/><span style={{ fontSize: 11, color: "#aaa" }}>{v.hub_city}</span></td>
+                  <td><Battery pct={v.battery_health_pct}/></td>
+                  <td style={{ fontSize: 12, color: "#666" }}>{Number(v.odometer_km).toLocaleString()} km</td>
+                  <td><Pill status={v.status}/></td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      {showAdd && <AddVehicleModal hubs={hubs} toast={toast} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); }}/>}
+    </div>
+  );
+}
+
+function AddVehicleModal({ hubs, toast, onClose, onSaved }) {
+  const [form, setForm] = useState({ registration_number: "", model: "", manufacturer: "", vehicle_type: "ev_2w", hub: hubs[0]?.id || "", battery_health_pct: 100, odometer_km: 0 });
+  const [loading, setLoading] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  async function save() {
+    if (!form.registration_number || !form.model || !form.hub) { toast("Fill all required fields", "error"); return; }
+    setLoading(true);
+    try {
+      await api("/fleet/vehicles/", { method: "POST", body: JSON.stringify(form) });
+      toast("Vehicle added!", "success");
+      onSaved();
+    } catch(e) { toast(e.message, "error"); setLoading(false); }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Add Vehicle</h3>
+        <div className="form-grid">
+          <div className="form-row"><label>Registration Number *</label><input value={form.registration_number} onChange={e => set("registration_number", e.target.value)} placeholder="KA-01-AB-1234"/></div>
+          <div className="form-row"><label>Model *</label><input value={form.model} onChange={e => set("model", e.target.value)} placeholder="Hero Electric Optima"/></div>
+          <div className="form-row"><label>Manufacturer</label><input value={form.manufacturer} onChange={e => set("manufacturer", e.target.value)}/></div>
+          <div className="form-row"><label>Type</label><select value={form.vehicle_type} onChange={e => set("vehicle_type", e.target.value)}><option value="ev_2w">2-Wheeler EV</option><option value="ev_3w">3-Wheeler EV</option></select></div>
+          <div className="form-row"><label>Hub *</label><select value={form.hub} onChange={e => set("hub", e.target.value)}>{hubs.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
+          <div className="form-row"><label>Battery %</label><input type="number" value={form.battery_health_pct} onChange={e => set("battery_health_pct", Number(e.target.value))} min={0} max={100}/></div>
+          <div className="form-row"><label>Odometer (km)</label><input type="number" value={form.odometer_km} onChange={e => set("odometer_km", Number(e.target.value))} min={0}/></div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button className="btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={loading}>{loading ? "Adding..." : "Add Vehicle"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP SHELL
+// ═══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
+  });
+  const [page, setPage] = useState("dashboard");
+  const [toastMsg, setToastMsg] = useState(null);
+
+  const toast = (msg, type = "success") => setToastMsg({ msg, type });
+  const logout = () => { localStorage.clear(); setUser(null); };
+
+  if (!user) return <LoginPage onLogin={setUser}/>;
+
+  const pages = {
+    dashboard:  <Dashboard/>,
+    riders:     <Riders toast={toast}/>,
+    allocation: <Allocation toast={toast}/>,
+    fleet:      <Fleet toast={toast}/>,
+  };
+
+  const nav = [
+    ["dashboard",  "📊", "Dashboard"],
+    ["riders",     "👤", "Rider Onboarding"],
+    ["allocation", "🛵", "Vehicle Allocation"],
+    ["fleet",      "🚗", "Fleet Management"],
+  ];
+
+  return (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <div className="sidebar">
+        <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Yana OS</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 }}>MVP — Module 1</div>
+        </div>
+        <nav style={{ flex: 1, padding: "8px 0" }}>
+          {nav.map(([key, icon, label]) => (
+            <div key={key} className={`nav-item${page === key ? " active" : ""}`} onClick={() => setPage(key)}>
+              <span style={{ fontSize: 16 }}>{icon}</span>{label}
+            </div>
+          ))}
+        </nav>
+        <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,.1)" }}>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.6)", marginBottom: 6 }}>{user.full_name || user.phone_number}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginBottom: 10, textTransform: "uppercase" }}>{user.role}</div>
+          <button onClick={logout} style={{ background: "none", border: "1px solid rgba(255,255,255,.3)", color: "rgba(255,255,255,.7)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>Logout</button>
+        </div>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ height: 52, background: "#fff", borderBottom: "1px solid #E8EAF0", display: "flex", alignItems: "center", padding: "0 24px", flexShrink: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#1a1a2e" }}>
+            {nav.find(n => n[0] === page)?.[2]}
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#888" }}>
+            <a href="http://127.0.0.1:8000/api/docs/" target="_blank" rel="noreferrer" style={{ color: "#2E86C1" }}>API Docs ↗</a>
+            &nbsp;·&nbsp;
+            <a href="http://127.0.0.1:8000/admin/" target="_blank" rel="noreferrer" style={{ color: "#2E86C1" }}>Django Admin ↗</a>
+          </span>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+          {pages[page]}
+        </div>
+      </div>
+      {toastMsg && <Toast msg={toastMsg.msg} type={toastMsg.type} onDone={() => setToastMsg(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

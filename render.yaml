@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: yana-backend
+    env: python
+    rootDir: backend
+    buildCommand: ./build.sh
+    startCommand: gunicorn yana.wsgi --log-file -
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: EXPOSE_OTP_IN_RESPONSE
+        value: "True"
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: static_site
+    name: yana-frontend
+    rootDir: frontend
+    buildCommand: ""
+    publishPath: .
