@@ -16,22 +16,15 @@ services:
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "False"
       - key: CORS_ALLOWED_ORIGINS
-        value: https://yana-frontend.onrender.com
+        value: https://your-netlify-site.netlify.app
       - key: CSRF_TRUSTED_ORIGINS
-        value: https://yana-backend.onrender.com,https://yana-frontend.onrender.com
+        value: https://yana-backend.onrender.com,https://your-netlify-site.netlify.app
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: yana-db
           property: connectionString
-
-  - type: web
-    name: yana-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: ""
-    staticPublishPath: .
 
 databases:
   - name: yana-db
