@@ -1,3 +1,3 @@
 window.YANA_CONFIG = {
-  apiBaseUrl: "http://127.0.0.1:8000/api",
+  apiBaseUrl: "https://yana-mvp.onrender.com/api",
 };

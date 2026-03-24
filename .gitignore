@@ -10,3 +10,4 @@ backend/apps/**/__pycache__/
 backend/yana/__pycache__/
 *.pyc
 .env
+.netlify/
