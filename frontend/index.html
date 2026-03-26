@@ -435,26 +435,18 @@ function AddRiderModal({ onClose, onSaved, toast }) {
     if (!phone) { toast("Phone number required", "error"); return; }
     setLoading(true);
     try {
-      // First create a user via OTP flow (request OTP, then use it)
-      const r1 = await api("/auth/otp/request/", { method: "POST", body: JSON.stringify({ phone_number: phone }) });
-      const r2 = await api("/auth/otp/verify/", { method: "POST", body: JSON.stringify({ phone_number: phone, otp: r1.otp }) });
-      // Update name
-      if (name) {
-        await fetch(API + "/auth/me/update/", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${r2.access}` },
-          body: JSON.stringify({ full_name: name }),
-        });
-      }
-      // Create rider profile using the new user's token
-      await fetch(API + "/onboarding/riders/my_profile/", {
+      await api("/onboarding/riders/create_rider/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${r2.access}` },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          phone_number: phone,
+          full_name: name,
+        }),
       });
       toast("Rider created!", "success");
       onSaved();
-    } catch (e) { toast(e.message, "error"); setLoading(false); }
+      onClose();
+    } catch (e) { toast(e.message, "error"); }
+    setLoading(false);
   }
 
   return (
